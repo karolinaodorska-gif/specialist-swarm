@@ -8,7 +8,7 @@
 :root{
   --bg:#f5f6f8; --panel:#ffffff; --ink:#1a1f2b; --muted:#6b7385; --line:#dfe3ea;
   --accent:#3b6cf6; --run:#f59e0b; --ok:#16a34a; --err:#dc2626; --crm:#8b5cf6;
-  --c-pricing:#e8590c; --c-legal:#7048e8; --c-technical:#0c8599; --c-competitive:#2f9e44; --c-coordinator:#3b6cf6;
+  --c-critic:#c2255c; --c-pricing:#e8590c; --c-legal:#7048e8; --c-technical:#0c8599; --c-competitive:#2f9e44; --c-coordinator:#3b6cf6;
   --shadow:0 1px 2px rgba(20,30,50,.06),0 4px 16px rgba(20,30,50,.05);
 }
 @media (prefers-color-scheme:dark){
@@ -82,6 +82,7 @@ label.chk{font-size:12px;color:var(--muted);text-transform:none;letter-spacing:0
   <h1>Deal Desk Swarm</h1>
   <span id="status" class="pill">bereit</span>
   <span id="timer" class="pill">0:00</span>
+  <span id="tokens" class="pill" tabindex="0" title="Noch keine Token-Daten">Tokens: –</span>
   <span class="sp"></span>
   <button id="btnDemo" title="Gescriptete Beispiel-Ausführung, ohne API">Demo</button>
   <input id="sid" placeholder="Session-ID für Replay" spellcheck="false">
@@ -126,6 +127,7 @@ const NODES = {
   legal:       {label:"Legal",          sub:"Reviewer",    x:330, y:250, w:196, color:"--c-legal"},
   technical:   {label:"Technical Fit",  sub:"Specialist",  x:550, y:250, w:196, color:"--c-technical"},
   competitive: {label:"Competitive",    sub:"Intel Analyst", x:770, y:250, w:196, color:"--c-competitive"},
+  critic:      {label:"Critic",         sub:"Reviewer",    x:770, y:62, w:196, color:"--c-critic", optional:true},  // only shown if it takes part
 };
 const SVGNS = "http://www.w3.org/2000/svg";
 const H = 64;
@@ -133,6 +135,7 @@ let es = null, t0 = 0, timerId = null, running = new Set(), maxPar = 0, finished
 
 function keyOf(name){
   const n = (name||"").toLowerCase();
+  if (n.includes("critic")) return "critic";
   if (n.includes("pricing")) return "pricing";
   if (n.includes("legal")) return "legal";
   if (n.includes("technical")) return "technical";
@@ -143,12 +146,16 @@ const colorOf = k => `var(${NODES[k].color})`;
 const el = (tag, attrs={}, parent) => { const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent && parent.appendChild(e); return e; };
 
 /* ---------- graph ---------- */
-const g = $("graph"), nodeEls = {}, edgeEls = {}, subEls = {};
+const g = $("graph"), nodeEls = {}, edgeEls = {}, subEls = {}, tokEls = {};
 function buildGraph(){
   g.innerHTML = "";
   for (const k of Object.keys(NODES)) if (k !== "coordinator") {
     const a = NODES.coordinator, b = NODES[k];
-    edgeEls[k] = el("path", {class:"edge", d:`M${a.x},${a.y+H/2} C${a.x},${(a.y+b.y)/2} ${b.x},${(a.y+b.y)/2} ${b.x},${b.y-H/2}`}, g);
+    const d = b.y === a.y   // same row (critic): straight line between the box edges
+      ? `M${a.x+a.w/2},${a.y} L${b.x-b.w/2},${b.y}`
+      : `M${a.x},${a.y+H/2} C${a.x},${(a.y+b.y)/2} ${b.x},${(a.y+b.y)/2} ${b.x},${b.y-H/2}`;
+    edgeEls[k] = el("path", {class:"edge", d}, g);
+    if (b.optional) edgeEls[k].style.display = "none";
   }
   for (const [k, n] of Object.entries(NODES)) {
     const grp = el("g", {class:"node", transform:`translate(${n.x-n.w/2},${n.y-H/2})`}, g);
@@ -158,11 +165,19 @@ function buildGraph(){
     subEls[k] = el("text", {class:"sub", x:20, y:47}, grp);
     subEls[k].textContent = n.sub;
     el("circle", {class:"dot", cx:n.w-18, cy:18, r:5}, grp);
+    tokEls[k] = el("text", {class:"sub tok", x:n.w-12, y:47, "text-anchor":"end"}, grp);
     nodeEls[k] = grp;
+    if (n.optional) grp.style.display = "none";
+  }
+}
+function reveal(k){   // show an optional node (critic) as soon as it appears in the run
+  if (nodeEls[k] && nodeEls[k].style.display === "none") {
+    nodeEls[k].style.display = ""; edgeEls[k] && (edgeEls[k].style.display = "");
   }
 }
 function setState(k, state){
   const n = nodeEls[k]; if (!n) return;
+  reveal(k);
   n.classList.remove("running","done");
   if (state === "running") { n.classList.add("running"); subEls[k].textContent = "arbeitet …"; }
   else if (state === "idle" || state === "done") { n.classList.add("done"); subEls[k].textContent = "fertig"; }
@@ -174,8 +189,15 @@ function setState(k, state){
   }
 }
 function packet(from, to, color){
+  reveal(from); reveal(to);
   const a = NODES[from], b = NODES[to];
-  const ax = a.x, ay = a.y + (a.y < b.y ? H/2 : -H/2), bx = b.x, by = b.y + (a.y < b.y ? -H/2 : H/2);
+  let ax, ay, bx, by;
+  if (a.y === b.y) {   // same row: left/right box edges
+    const dir = a.x < b.x ? 1 : -1;
+    ax = a.x + dir*a.w/2; ay = a.y; bx = b.x - dir*b.w/2; by = b.y;
+  } else {
+    ax = a.x; ay = a.y + (a.y < b.y ? H/2 : -H/2); bx = b.x; by = b.y + (a.y < b.y ? -H/2 : H/2);
+  }
   const c = el("circle", {class:"packet", r:7, fill:color, cx:ax, cy:ay}, g);
   const dur = 650, s = performance.now();
   (function step(now){
@@ -184,7 +206,7 @@ function packet(from, to, color){
     p < 1 ? requestAnimationFrame(step) : c.remove();
   })(s);
 }
-function flashEdge(k){ edgeEls[k].classList.add("on"); setTimeout(()=>edgeEls[k].classList.remove("on"), 900); }
+function flashEdge(k){ if (!edgeEls[k]) return; edgeEls[k].classList.add("on"); setTimeout(()=>edgeEls[k].classList.remove("on"), 900); }
 function flashCrm(k){ nodeEls[k].classList.add("crmflash"); setTimeout(()=>nodeEls[k].classList.remove("crmflash"), 1400); }
 
 /* ---------- timeline ---------- */
@@ -240,6 +262,7 @@ function handle(e){
       const pre = document.createElement("pre"); pre.textContent = e.result;
       d.append(s, pre); addRow(e.agent, "", d, "crm"); break;
     }
+    case "usage": showUsage(e); break;
     case "files": showFiles(e.files||[]); break;
     case "error": addRow("coordinator", "Fehler", e.text, "err"); setStatus("Fehler","error"); stop(true); break;
     case "done":
@@ -265,6 +288,28 @@ function showFiles(files){
   if (!files.length) f.innerHTML = '<div class="note">Keine Dateien vom Lauf erzeugt.</div>';
 }
 
+/* ---------- tokens ---------- */
+const fmt = n => n >= 1e6 ? (n/1e6).toFixed(2) + "M" : n >= 1e3 ? (n/1e3).toFixed(1) + "k" : String(n);
+function showUsage(e){
+  const t = e.total, tot = t.input + t.output;
+  const cost = t.cost_usd != null ? ` · ≈ $${t.cost_usd.toFixed(2)}` : "";
+  $("tokens").textContent = `Tokens: ↓ ${fmt(t.input)} · ↑ ${fmt(t.output)}${cost}`;
+  const perKey = {};
+  (e.threads||[]).forEach(th => {
+    const k = keyOf(th.agent), p = perKey[k] ||= {input:0, output:0, cache_read:0, cache_write:0, cost_usd:0, name:th.agent};
+    ["input","output","cache_read","cache_write"].forEach(f => p[f] += th[f]||0);
+    p.cost_usd += th.cost_usd||0;
+  });
+  const lines = [`Gesamt: ${t.input.toLocaleString("de")} Input · ${t.output.toLocaleString("de")} Output`
+    + ` · Cache gelesen ${t.cache_read.toLocaleString("de")} · Cache geschrieben ${t.cache_write.toLocaleString("de")}`
+    + (t.cost_usd != null ? ` · Listenpreis ≈ $${t.cost_usd.toFixed(4)}` : ""), ""];
+  for (const [k, p] of Object.entries(perKey)) {
+    if (tokEls[k]) { tokEls[k].textContent = fmt(p.input + p.output) + " Tok"; if (p.input + p.output > 0) reveal(k); }
+    lines.push(`${NODES[k].label}: ↓ ${p.input.toLocaleString("de")} · ↑ ${p.output.toLocaleString("de")}`);
+  }
+  $("tokens").title = lines.join("\n");
+}
+
 /* ---------- control ---------- */
 function setStatus(text, cls=""){ const s = $("status"); s.textContent = text; s.className = "pill " + cls; }
 function lock(b){ ["btnDemo","btnReplay","btnLive"].forEach(id => $(id).disabled = b || (id==="btnLive" && !liveOk)); }
@@ -277,6 +322,7 @@ function start(url, label, demo){
   if (es) es.close();
   buildGraph(); running.clear(); maxPar = 0; finished = false;
   $("parNow").textContent = 0; $("parMax").textContent = 0;
+  $("tokens").textContent = "Tokens: –"; $("tokens").title = "Noch keine Token-Daten";
   tl.innerHTML = '<div class="empty">Warte auf Events …</div>';
   resultRaw = ""; $("result").className = "empty"; $("result").textContent = "Noch nichts."; $("files").innerHTML = ""; $("link").textContent = "";
   $("demoBanner").style.display = demo ? "block" : "none";

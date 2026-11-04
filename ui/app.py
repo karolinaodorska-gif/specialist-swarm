@@ -111,6 +111,46 @@ class Normalizer:
         return []
 
 
+def _usage_dict(u) -> dict:
+    """SDK usage object -> plain dict. list_cost.amount is in cents (string)."""
+    if u is None:
+        return {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "cost_usd": None}
+    cc = getattr(u, "cache_creation", None)
+    write = ((getattr(cc, "ephemeral_1h_input_tokens", 0) or 0)
+             + (getattr(cc, "ephemeral_5m_input_tokens", 0) or 0)) if cc else 0
+    cost = None
+    if getattr(u, "list_cost", None) is not None:
+        try:
+            cost = int(u.list_cost.amount) / 100
+        except (TypeError, ValueError):
+            cost = None
+    return {"input": u.input_tokens or 0, "output": u.output_tokens or 0,
+            "cache_read": u.cache_read_input_tokens or 0, "cache_write": write, "cost_usd": cost}
+
+
+class UsagePoller:
+    """Reads token usage (session total + per thread) at most every `interval` seconds."""
+
+    def __init__(self, client, session_id: str, interval: float = 3.0):
+        self.client, self.session_id, self.interval = client, session_id, interval
+        self._last = 0.0
+
+    def poll(self, force: bool = False):
+        now = time.monotonic()
+        if not force and now - self._last < self.interval:
+            return None
+        self._last = now
+        try:
+            session = self.client.beta.sessions.retrieve(self.session_id)
+            threads = [
+                {"agent": getattr(th.agent, "name", None) or "?", **_usage_dict(th.usage)}
+                for th in self.client.beta.sessions.threads.list(self.session_id)
+            ]
+            return {"kind": "usage", "total": _usage_dict(session.usage), "threads": threads}
+        except Exception:  # usage is a nice-to-have, never break the run
+            return None
+
+
 def crm_event(event, agent: str, result: str) -> dict:
     return {"kind": "crm_call", "agent": agent, "name": event.name,
             "input": event.input, "result": result}
@@ -138,6 +178,7 @@ def run_live():
         )
         (ROOT / ".last_session_id").write_text(session.id)
         yield {"kind": "session", "id": session.id}
+        poller = UsagePoller(client, session.id)
 
         message = (
             "An RFP has just landed. Please run the standard Deal Desk process:\n"
@@ -158,6 +199,9 @@ def run_live():
             )
             for event in stream:
                 t = event.type
+                usage = poller.poll()
+                if usage:
+                    yield usage
                 if t == "agent.custom_tool_use" and custom_tool.is_crm_tool(event.name):
                     result = custom_tool.run_crm_tool(event.name, event.input)
                     reply = {"type": "user.custom_tool_result",
@@ -174,6 +218,10 @@ def run_live():
                     yield {"kind": "thread_status", "agent": COORDINATOR_NAME, "state": "idle"}
                     break
                 yield from norm(event)
+
+        final_usage = poller.poll(force=True)
+        if final_usage:
+            yield final_usage
 
         OUTPUT_DIR.mkdir(exist_ok=True)
         names = []
@@ -213,6 +261,9 @@ def run_replay(session_id: str):
                 yield {"kind": "thread_status", "agent": COORDINATOR_NAME, "state": "idle"}
                 continue
             yield from norm(event)
+        final_usage = UsagePoller(client, session_id).poll(force=True)
+        if final_usage:
+            yield final_usage
         yield {"kind": "done", "session": session_id,
                "link": f"https://platform.claude.com/sessions/{session_id}"}
     except Exception as exc:
