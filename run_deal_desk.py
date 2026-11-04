@@ -28,6 +28,25 @@ SUPPORTING_FILES = [
 ]
 OUTPUT_DIR = Path("outputs")
 
+# House style. Sent inline with every run so the coordinator can't miss it
+# (skill mounts aren't always visible inside the coordinator's container).
+FIRM_VOICE_PATH = Path("skills/firm-voice/SKILL.md")
+
+
+def load_firm_voice() -> str:
+    if not FIRM_VOICE_PATH.exists():
+        return ""
+    print(f"  including firm voice: {FIRM_VOICE_PATH}")
+    return (
+        "\n\n=====  MANDATORY HOUSE STYLE (firm-voice)  =====\n"
+        "This overrides any default branding. The final docx MUST use the "
+        "company name, section headings, tone, humour, colours (exact hex "
+        "values), cover page and footer defined below. A proposal that says "
+        "'BTS-Synthetic' on the cover or uses non-swamp colours is a FAILED "
+        "deliverable.\n\n"
+        + FIRM_VOICE_PATH.read_text(encoding="utf-8")
+    )
+
 
 def load_inputs_as_context() -> str:
     blocks = []
@@ -72,11 +91,16 @@ def main() -> None:
         "2. Delegate to all four specialists in parallel.\n"
         "3. Synthesise their replies.\n"
         "4. Produce the final proposal response as a branded Word document "
-        "if you have access to a docx skill; otherwise output the response "
-        "as a structured markdown document.\n\n"
+        "(python-docx) in the Bogwater & Burr house style below: name, "
+        "headings, humour, colours, cover and footer exactly as specified. "
+        "Name the file Bogwater-Burr_Proposal_<Customer>.docx.\n"
+        "5. Before finishing, run the house-style self-check from the style "
+        "guide and fix anything that fails. Also ask the Critic to check the "
+        "voice, not just the substance.\n\n"
         "Specialists have their own skills attached for their respective "
         "domains. Move fast — the RFP deadline is real.\n\n"
         f"{context}"
+        f"{load_firm_voice()}"
     )
 
     # Stream the events — this is the demo. Watch for parallel thread spawns.

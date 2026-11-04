@@ -25,14 +25,15 @@ Always refer to us as **Bogwater & Burr** in customer-facing text. Mention "BTS-
 
 ## The humour budget (important)
 
-Humour is seasoning, not the meal. A partner must be able to send this to a CFO.
+The humour must be OBVIOUS. A reader should smile on page one and know within ten seconds that this vendor lives in a swamp. A proposal that reads like a normal corporate document has FAILED this skill. The facts stay precise; the wrapping is unmistakably ogre-ish.
 
-- **Allowed:** section headings, the opening line of each section, one callout box per section, the cover-letter sign-off, risk framing.
-- **Never funny:** numbers, prices, discounts, SLAs, legal positions, liability, data-protection commitments, dates. These are stated plainly and precisely. No jokes inside tables.
-- **Max one joke per section.** If you're unsure whether a line is too much, cut it.
+- **Must be funny:** every section heading (use the table below), the opening line of every section, a "Swamp Wisdom" callout box in every section (one gruff, funny one-liner in Lantern Gold on Reed background), the cover page, the cover letter and the sign-off.
+- **Encouraged:** gruff asides in parentheses, e.g. "(Yes, we checked. Twice. With a lantern.)"; comparing competitor promises to castles, enchanted mirrors and magic beans; comparing our approach to building sturdy bridges over swamps; layers ("good platforms, like onions and ogres, have layers"); grumbling about pomp, trumpets and royal decrees.
+- **Never funny:** the actual numbers, prices, discounts, SLAs, legal positions, liability, data-protection commitments and dates. State these plainly and precisely, and keep jokes out of table cells.
+- Aim for **2–3 humorous touches per section**: heading, opening line and Swamp Wisdom box.
 - Never make fun of the customer, their industry, their people, or their current vendor's staff.
 
-## Signature phrases (use 2–4 per document, not more)
+## Signature phrases (use at least 4 per document)
 
 - "No magic beans. Just a platform that works."
 - "We don't do fairy tales. We do go-lives."
@@ -73,15 +74,19 @@ Sign off with: *"Muddy regards,"* followed by the senior partner's title and "Bo
 - **Accent:** Lantern Gold `#D4A017` (callout boxes, key numbers)
 - **Background tint for callouts:** Reed `#EEF2E2`
 - **Text:** Charcoal `#2B2B2B`
-- Headings: bold, Swamp Green. Subtitles (plain-English) in italic Peat Brown.
+- Headings: bold, Swamp Green, 16pt+, with a thin Swamp Green rule beneath. Subtitles (plain-English) in italic Peat Brown.
+- Do NOT use navy, blue, orange or grey as brand colours. Green dominates.
 - Tables: header row Swamp Green with white text, banded rows in Reed.
 - Cover page: company name large in Swamp Green, tagline beneath in Lantern Gold: **"No magic beans. Just a platform that works."**
 - Footer on every page: "Bogwater & Burr Data Works — Confidential — No trolls were harmed in the making of this proposal."
 
 ## Quick self-check before you finish
 
-- [ ] Could a CFO forward this without embarrassment? (If no: cut jokes.)
-- [ ] Are all numbers, terms and legal positions stated plainly with zero humour?
+- [ ] Does the cover say **Bogwater & Burr** (not BTS-Synthetic) with the tagline in gold?
+- [ ] Is the document visibly green: Swamp Green headings, green table headers, Reed callouts?
+- [ ] Does EVERY section use the swamp heading from the table and contain a "Swamp Wisdom" box?
+- [ ] Would a reader smile on page one? (If not: add more swamp.)
+- [ ] Are all numbers, terms and legal positions still stated plainly and precisely?
 - [ ] Is the customer the hero, not us?
-- [ ] At most one joke per section, 2–4 signature phrases total?
+- [ ] Footer with the troll line on every page?
 - [ ] No references to any real film, character or franchise?
