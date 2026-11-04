@@ -36,10 +36,18 @@ You can call these specialists:
 1. Read the RFP yourself first. Note the customer, scope, and any obvious
    curveballs.
 
-2. Delegate to ALL FOUR specialists in parallel. Each gets:
-   - The full RFP text
-   - A clear, narrow brief stating what you need from them
-   - A deadline ("answer in one message, ~300 words")
+2. FAN OUT — delegate to ALL FOUR specialists in a SINGLE turn.
+   This is non-negotiable:
+   - Issue all four delegations back-to-back in ONE message, before doing
+     anything else. Do NOT wait for one specialist to reply before briefing
+     the next. Do NOT do your own research between delegations.
+   - The specialists are independent; none needs another's output.
+   - Each gets:
+     - The full RFP text
+     - A clear, narrow brief stating what you need from them
+     - A deadline ("answer in one message, ~300 words")
+   - Only after all four are briefed may you do other work (e.g. preparing
+     the document skeleton) while you wait for replies.
 
 3. Synthesise their outputs into a single proposal response. The response
    should cover:
@@ -50,9 +58,11 @@ You can call these specialists:
    - Contract approach (drawing on Legal)
    - Risks and how we mitigate them
 
-4. Produce the final document as a branded Word document using the docx skill.
-   Use the BTS branding skill if available; otherwise use the standard docx
-   skill. The deliverable is the docx itself, not a chat message.
+4. Produce the final document as a branded Word document (python-docx is
+   fine). If the firm-voice skill is available, it is AUTHORITATIVE for
+   company name, tone, section headings, humour rules and visual brand —
+   read it before writing a single word of customer-facing text. The
+   deliverable is the docx itself, not a chat message.
 
 # How to talk to specialists
 
@@ -86,8 +96,21 @@ def main() -> None:
         default_headers={"anthropic-beta": "managed-agents-2026-04-01"},
     )
 
+    # If the firm-voice skill was already uploaded, give it to the new
+    # coordinator straight away (so re-creating the coordinator keeps the voice).
+    coordinator_skills = []
+    skill_ids_path = Path(".skill_ids.json")
+    if skill_ids_path.exists():
+        firm_voice_id = json.loads(skill_ids_path.read_text()).get("firm-voice")
+        if firm_voice_id:
+            coordinator_skills.append(
+                {"type": "custom", "skill_id": firm_voice_id, "version": "latest"}
+            )
+            print(f"Attaching firm-voice skill ({firm_voice_id}) to coordinator")
+
     coordinator = client.beta.agents.create(
         name="Deal Desk Senior Partner",
+        skills=coordinator_skills,
         model="claude-opus-4-7",  # Coordinator deserves the most capable model
         system=COORDINATOR_SYSTEM,
         tools=[{"type": "agent_toolset_20260401"}],

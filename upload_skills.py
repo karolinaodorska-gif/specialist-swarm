@@ -23,6 +23,7 @@ SKILL_TO_SPECIALIST = {
     "pricing-playbook": "pricing",
     "legal-checklist":  "legal",
     "competitive-intel": "competitive",
+    "firm-voice":        "coordinator",   # house voice belongs to whoever writes the doc
 }
 
 
@@ -34,6 +35,9 @@ def main() -> None:
     if not specialist_ids_path.exists():
         raise SystemExit("Run create_specialists.py first.")
     specialist_ids = json.loads(specialist_ids_path.read_text())
+    # The coordinator is a valid attach target too (for the firm-voice skill)
+    if Path(".coordinator_id").exists():
+        specialist_ids["coordinator"] = Path(".coordinator_id").read_text().strip()
 
     client = Anthropic()
 
@@ -43,7 +47,7 @@ def main() -> None:
     print("Checking for existing skills...")
     existing_by_title: dict[str, str] = {}
     for page in client.beta.skills.list(source="custom"):
-        existing_by_title[page.display_title] = page.id
+        existing_by_title[page.display_name] = page.id
 
     uploaded: dict[str, str] = {}
 
@@ -63,13 +67,17 @@ def main() -> None:
         else:
             print(f"Uploading skill: {skill_name}...")
             skill = client.beta.skills.create(
-                display_title=display_title,
+                display_name=display_title,
                 files=files_from_dir(str(skill_dir)),
             )
             uploaded[skill_name] = skill.id
             print(f"  -> {skill.id}")
 
         # 2. Attach to the matching specialist by updating its skills array
+        if specialist_key not in specialist_ids:
+            print(f"  No `{specialist_key}` agent yet — skipping attach "
+                  f"(run create_coordinator.py first, then re-run this)")
+            continue
         specialist_id = specialist_ids[specialist_key]
         skill_id = uploaded[skill_name]
         print(f"  attaching to specialist `{specialist_key}` ({specialist_id})...")
@@ -77,13 +85,13 @@ def main() -> None:
         current = client.beta.agents.retrieve(specialist_id)
         # Avoid duplicate attachment on re-run
         already_attached = any(
-            s.get("skill_id") == skill_id for s in (current.skills or [])
+            getattr(s, "skill_id", None) == skill_id for s in (current.skills or [])
         )
         if already_attached:
             print(f"  already attached ✓ (skipping)")
             continue
 
-        new_skills = list(current.skills or []) + [
+        new_skills = [s.model_dump(include={"type", "skill_id", "version"}) for s in (current.skills or [])] + [
             {"type": "custom", "skill_id": skill_id, "version": "latest"}
         ]
         client.beta.agents.update(

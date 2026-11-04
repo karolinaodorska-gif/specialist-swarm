@@ -32,7 +32,7 @@ def load_inputs_as_context() -> str:
             print(f"  WARNING: {path} missing — skipping")
             continue
         print(f"  including {path.name}")
-        blocks.append(f"=====  DOCUMENT: {path.name}  =====\n{path.read_text()}")
+        blocks.append(f"=====  DOCUMENT: {path.name}  =====\n{path.read_text(encoding='utf-8')}")
     return "\n\n".join(blocks)
 
 
@@ -113,7 +113,7 @@ def main() -> None:
 
     OUTPUT_DIR.mkdir(exist_ok=True)
     transcript_path = OUTPUT_DIR / "coordinator-transcript.txt"
-    transcript_path.write_text("".join(final_text_parts))
+    transcript_path.write_text("".join(final_text_parts), encoding="utf-8")
     print(f"\nCoordinator transcript saved to {transcript_path}")
 
     # Pull every file the agents produced in the container

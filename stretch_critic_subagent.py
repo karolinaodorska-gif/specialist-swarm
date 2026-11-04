@@ -49,7 +49,7 @@ def main() -> None:
     if not api_key:
         raise SystemExit("Set ANTHROPIC_API_KEY before running.")
 
-    coordinator_id = Path(".coordinator_id").read_text().strip()
+    coordinator_id = Path(".coordinator_id").read_text(encoding="utf-8").strip()
     specialist_ids = json.loads(Path(".specialist_ids.json").read_text())
 
     client = Anthropic(
@@ -57,29 +57,42 @@ def main() -> None:
         default_headers={"anthropic-beta": "managed-agents-2026-04-01"},
     )
 
-    # Create the critic
-    critic = client.beta.agents.create(
-        name="Deal Desk Critic",
-        model="claude-opus-4-7",  # The critic needs to be sharp
-        system=CRITIC_SYSTEM,
-        tools=[{"type": "agent_toolset_20260401"}],
-        metadata={
-            "hackathon": "partner-basecamp-2026",
-            "track": "specialist-swarm",
-            "role": "critic",
-        },
-    )
-    print(f"Critic created: {critic.id}")
+    # Guard against running twice against the same coordinator
+    coordinator = client.beta.agents.retrieve(coordinator_id)
+    if "# Critic" in (coordinator.system or ""):
+        raise SystemExit(
+            "This coordinator already has the critic wired in. Nothing to do.\n"
+            "(If you re-created the coordinator, this check passes automatically.)"
+        )
+
+    # Create the critic (reuse an existing one if we made it earlier)
+    if "critic" in specialist_ids:
+        critic = client.beta.agents.retrieve(specialist_ids["critic"])
+        print(f"Reusing existing critic: {critic.id}")
+    else:
+        critic = client.beta.agents.create(
+            name="Deal Desk Critic",
+            model="claude-opus-4-7",  # The critic needs to be sharp
+            system=CRITIC_SYSTEM,
+            tools=[{"type": "agent_toolset_20260401"}],
+            metadata={
+                "hackathon": "partner-basecamp-2026",
+                "track": "specialist-swarm",
+                "role": "critic",
+            },
+        )
+        print(f"Critic created: {critic.id}")
 
     # Add critic to specialist IDs and persist
     specialist_ids["critic"] = critic.id
     Path(".specialist_ids.json").write_text(json.dumps(specialist_ids, indent=2))
 
-    # Update coordinator's roster to include the critic
-    coordinator = client.beta.agents.retrieve(coordinator_id)
-    new_roster = list(coordinator.multiagent.agents) + [
-        {"type": "agent", "id": critic.id}
-    ]
+    # Update coordinator's roster to include the critic.
+    # The SDK returns roster entries as objects; convert to plain dicts.
+    new_roster = [
+        a.model_dump(exclude_none=True) for a in coordinator.multiagent.agents
+        if getattr(a, "id", None) != critic.id
+    ] + [{"type": "agent", "id": critic.id}]
 
     # Append critic guidance to the coordinator's system prompt
     new_system = coordinator.system + (
