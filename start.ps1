@@ -10,6 +10,8 @@
     -Rebuild    delete .coordinator_id and re-create the coordinator (e.g. after changing skills or prompts)
 
   Each step only runs when its state file is missing, so re-running is safe and creates no duplicates.
+  Changed the critic or coordinator prompt? Run with -Rebuild once (re-creates the coordinator and
+  re-applies the critic, which also updates the existing critic's prompt).
 #>
 param(
     [switch]$UiOnly,
@@ -55,7 +57,12 @@ if (-not $UiOnly) {
         $coordinatorNeeded = $true   # coordinator has to pick up the freshly uploaded firm-voice skill
     }
     if ($coordinatorNeeded)                      { Step "Coordinator anlegen" "create_coordinator.py" }
-    if (-not $NoCritic)                          { Step "Critic einbauen (nur wenn noch nicht vorhanden)" "stretch_critic_subagent.py" }
+    if (-not $NoCritic) {
+        # stretch_critic_subagent.py exits with code 1 when the coordinator already has the critic,
+        # so only run it for a NEW coordinator (it doesn't know the critic yet) or when no critic exists.
+        $criticKnown = (Test-Path ".specialist_ids.json") -and ((Get-Content ".specialist_ids.json" -Raw) -match '"critic"')
+        if ($coordinatorNeeded -or -not $criticKnown) { Step "Critic einbauen" "stretch_critic_subagent.py" }
+    }
 }
 
 Write-Host "`n=== UI starten: http://127.0.0.1:8000 (Strg+C zum Beenden) ===" -ForegroundColor Green

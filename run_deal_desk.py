@@ -19,13 +19,14 @@ import os
 import sys
 from pathlib import Path
 
-from anthropic import Anthropic
+from anthropic import Anthropic, APIStatusError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "crm-mcp"))
 from custom_tool import is_crm_tool, run_crm_tool  # noqa: E402  (synthetic CRM)
 
 
 ROOT = Path(__file__).resolve().parent
+BETA = "managed-agents-2026-04-01"
 # The API mounts resources UNDER /mnt/session/uploads (mount_path "/deal/x" -> /mnt/session/uploads/deal/x).
 # The workspace is shared: coordinator and specialists read the same paths.
 FILES_DIR = "/mnt/session/uploads/deal"
@@ -36,6 +37,8 @@ SESSION_FILES = [
     (ROOT / "synthetic-data" / "rfp-acme-corp.md", "rfp-acme-corp.md"),
     (ROOT / "synthetic-data" / "product-overview.md", "product-overview.md"),
     (ROOT / "tools" / "build_docx.py", "build_docx.py"),
+    # House style as a file, so the Critic reads it instead of searching the file system for the skill
+    (ROOT / "skills" / "firm-voice" / "SKILL.md", "house-style.md"),
 ]
 OUTPUT_DIR = Path("outputs")
 
@@ -101,7 +104,8 @@ def build_user_message() -> str:
         "FILES (already mounted in the shared workspace, NOT pasted here):\n"
         f"- {FILES_DIR}/rfp-acme-corp.md: the RFP\n"
         f"- {FILES_DIR}/product-overview.md: capability map (for Technical Fit)\n"
-        f"- {FILES_DIR}/build_docx.py: Word builder (step 4)\n"
+        f"- {FILES_DIR}/build_docx.py: Word builder (step 6)\n"
+        f"- {FILES_DIR}/house-style.md: the house style (same text as below)\n"
         "Never copy the content of these files into briefs, messages or other "
         "files: every specialist can read the same paths itself. Past-deal data "
         "is in the CRM tools (Pricing Specialist only).\n\n"
@@ -112,23 +116,51 @@ def build_user_message() -> str:
         "words, only the file path(s) to read and the one question to answer.\n"
         "3. Synthesise their replies.\n"
         "4. Write the proposal TEXT in the house style below as Markdown to "
-        f"{WORK_DIR}/proposal.md (mkdir -p first), then build the Word "
-        f"file: python3 {FILES_DIR}/build_docx.py {WORK_DIR}/proposal.md "
-        "/mnt/session/outputs/Bogwater-Burr_Proposal_<Customer>.docx . "
-        "Do NOT write your own python-docx code; the builder applies colours, "
-        "cover page, tables, Swamp Wisdom boxes and footer. Markdown format: "
-        "front matter between '---' lines (customer:, title:, date:), one "
-        "'## Swamp Heading — Plain subtitle' per section, '> Swamp Wisdom: ...' "
-        "callouts, '|' pipe tables, '- ' bullets, '1. ' numbered items. A blank "
-        "line starts a new paragraph (consecutive lines are joined). If the "
-        "builder reports an error, fix the Markdown and run it again.\n"
-        "5. Before finishing, run the house-style self-check from the style "
-        "guide and fix anything that fails. If a Critic is in your roster, ask "
-        "it to check the voice, not just the substance.\n\n"
+        f"{WORK_DIR}/proposal.md (mkdir -p first). Keep it tight: about 2,500 "
+        "words (roughly 6 pages), tables instead of long paragraphs, no "
+        "repetition between sections. Markdown format: front matter between "
+        "'---' lines (customer:, title:, date:), one '## Swamp Heading — Plain "
+        "subtitle' per section, '> Swamp Wisdom: ...' callouts, '|' pipe "
+        "tables, '- ' bullets, '1. ' numbered items. A blank line starts a new "
+        "paragraph (consecutive lines are joined; several short lines in a row "
+        "keep their line breaks, e.g. a sign-off).\n"
+        "5. Run the house-style self-check from the style guide and fix "
+        "anything that fails. If a Critic is in your roster, send it FILE PATHS "
+        f"only ({WORK_DIR}/proposal.md, the RFP, {FILES_DIR}/house-style.md) "
+        "and ask for a verdict plus at most 5 fixes in under 300 words, on "
+        "substance and voice. Apply the fixes yourself in the Markdown; "
+        "re-submit at most once.\n"
+        "6. Build the Word file (do NOT write your own python-docx code; the "
+        "builder applies colours, cover page, tables, callout boxes and "
+        f"footer): python3 {FILES_DIR}/build_docx.py {WORK_DIR}/proposal.md "
+        "/mnt/session/outputs/Bogwater-Burr_Proposal_<Customer>.docx . If the "
+        "builder reports an error, fix the Markdown and run it again.\n\n"
         "Specialists have their own skills attached for their respective "
         "domains. Move fast — the RFP deadline is real."
         f"{load_firm_voice()}"
     )
+
+
+def download_outputs(client: Anthropic, session_id: str, out_dir: Path = OUTPUT_DIR) -> list[str]:
+    """Download the files the agents produced; returns their names. Shared with ui/app.py.
+
+    The session's file list also contains the uploaded INPUT files, which the API refuses
+    to serve (file_not_downloadable), so those are skipped, as is anything else it won't serve.
+    """
+    out_dir.mkdir(exist_ok=True)
+    input_names = {name for _, name in SESSION_FILES}
+    saved = []
+    for f in client.beta.files.list(scope_id=session_id, betas=[BETA]).data:
+        name = Path(f.filename).name
+        if f.downloadable is False or name in input_names:
+            continue
+        try:
+            client.beta.files.download(f.id).write_to_file(str(out_dir / name))
+        except APIStatusError as exc:  # keep the other files even if one is refused
+            print(f"  skipped {name}: {exc}")
+            continue
+        saved.append(name)
+    return saved
 
 
 def main() -> None:
@@ -202,17 +234,10 @@ def main() -> None:
 
     # Pull every file the agents produced in the container
     print("\nDownloading deliverables from the session container...")
-    files = client.beta.files.list(
-        scope_id=session.id,
-        betas=["managed-agents-2026-04-01"],
-    )
-    file_count = 0
-    for f in files.data:
-        out_path = OUTPUT_DIR / f.filename
-        print(f"  {f.filename}  ->  {out_path}")
-        content = client.beta.files.download(f.id)
-        content.write_to_file(str(out_path))
-        file_count += 1
+    saved = download_outputs(client, session.id)
+    file_count = len(saved)
+    for name in saved:
+        print(f"  {name}  ->  {OUTPUT_DIR / name}")
 
     if file_count == 0:
         print("  (no files found — agents may have produced text-only output)")

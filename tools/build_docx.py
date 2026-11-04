@@ -228,9 +228,17 @@ def subheading(doc: Document, text: str) -> None:
     spacing(p, before=8, after=3)
 
 
-def paragraph(doc: Document, text: str) -> None:
+def paragraph(doc: Document, lines: list) -> None:
+    """Consecutive lines are one paragraph, except a block of several SHORT lines
+    (sign-off, address): those keep their line breaks."""
     p = doc.add_paragraph()
-    add_runs(p, text)
+    if len(lines) > 1 and all(len(line) < 80 for line in lines):
+        for n, line in enumerate(lines):
+            add_runs(p, line)
+            if n < len(lines) - 1:
+                p.add_run().add_break()
+    else:
+        add_runs(p, " ".join(lines))
     spacing(p, after=6, line=1.12)
 
 
@@ -360,7 +368,7 @@ def build(md_text: str, out: Path) -> None:
             while i < len(lines) and lines[i].strip() and not is_special(lines[i]):
                 block.append(lines[i].strip())
                 i += 1
-            paragraph(doc, " ".join(block))
+            paragraph(doc, block)
     if sections == 0:
         raise SystemExit("ERROR: no '## ' section headings found. Check the Markdown format (see --help).")
     doc.core_properties.author = COMPANY_LONG

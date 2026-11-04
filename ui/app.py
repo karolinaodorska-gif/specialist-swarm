@@ -160,7 +160,8 @@ def crm_event(event, agent: str, result: str) -> dict:
 # ------------------------------------------------------------------ modes --
 
 def run_live():
-    from run_deal_desk import build_user_message, create_session  # same prompt + file setup as the CLI
+    # same prompt, file setup and download logic as the CLI
+    from run_deal_desk import build_user_message, create_session, download_outputs
 
     ready = live_readiness()
     if not ready["ready"]:
@@ -209,13 +210,7 @@ def run_live():
         if final_usage:
             yield final_usage
 
-        OUTPUT_DIR.mkdir(exist_ok=True)
-        names = []
-        files = client.beta.files.list(scope_id=session.id, betas=[BETA])
-        for f in files.data:
-            client.beta.files.download(f.id).write_to_file(str(OUTPUT_DIR / Path(f.filename).name))
-            names.append(Path(f.filename).name)
-        yield {"kind": "files", "files": names}
+        yield {"kind": "files", "files": download_outputs(client, session.id, OUTPUT_DIR)}
         yield {"kind": "done", "session": session.id,
                "link": f"https://platform.claude.com/sessions/{session.id}"}
     except (Exception, SystemExit) as exc:  # surface everything in the UI (create_session may SystemExit)

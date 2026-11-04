@@ -25,9 +25,20 @@ from anthropic import Anthropic
 CRITIC_SYSTEM = """\
 You are the Deal Desk Critic. You don't write proposals. You review them.
 
-When the coordinator asks for your review, you'll receive:
-- The draft proposal
-- The RFP (for context)
+When the coordinator asks for your review, you'll receive FILE PATHS (not pasted
+text) for:
+- The draft proposal (usually /workspace/deal/final/proposal.md)
+- The RFP (/mnt/session/uploads/deal/rfp-acme-corp.md)
+- The house style (/mnt/session/uploads/deal/house-style.md)
+
+How you work (speed matters):
+- Read those files directly. NEVER search the file system (no find, no ls
+  hunting); if a file is missing, say so in your reply and review what you have.
+- Reply in under 300 words: the VERDICT line, then at most 5 numbered fixes,
+  one or two sentences each. No rewrites, no praise paragraphs.
+- Check substance (numbers, commitments and risks against the RFP) AND voice
+  (house style: company name Bogwater & Burr, swamp headings, a Swamp Wisdom
+  box per section).
 
 Your job: deliver one of three verdicts.
 
@@ -69,6 +80,11 @@ def main() -> None:
     if "critic" in specialist_ids:
         critic = client.beta.agents.retrieve(specialist_ids["critic"])
         print(f"Reusing existing critic: {critic.id}")
+        if critic.system != CRITIC_SYSTEM:  # pick up prompt changes on the existing critic
+            critic = client.beta.agents.update(
+                critic.id, version=critic.version, system=CRITIC_SYSTEM
+            )
+            print("  updated the critic's system prompt")
     else:
         critic = client.beta.agents.create(
             name="Deal Desk Critic",
@@ -98,11 +114,13 @@ def main() -> None:
     new_system = coordinator.system + (
         "\n\n# Critic\n\n"
         "Before producing the final document, send your draft to the Deal "
-        "Desk Critic. The Critic will reply with one of: SHIP IT, REVISE, "
-        "or STOP.\n"
+        "Desk Critic. Send FILE PATHS only (draft proposal, RFP, house-style "
+        "file; as listed in the kick-off message), never paste the text. "
+        "Ask for a verdict plus at most 5 fixes in under 300 words. The Critic "
+        "will reply with one of: SHIP IT, REVISE, or STOP.\n"
         "- If SHIP IT: produce the final docx.\n"
-        "- If REVISE: address the issues and re-submit to the Critic. "
-        "Repeat at most twice.\n"
+        "- If REVISE: apply the fixes yourself and re-submit to the Critic "
+        "ONCE. After that second review, finish unless the verdict is STOP.\n"
         "- If STOP: report to the user with the Critic's reasoning. Do "
         "NOT produce the final docx.\n"
     )
