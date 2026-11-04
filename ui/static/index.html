@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deal Desk Swarm</title>
+<style>
+:root{
+  --bg:#f5f6f8; --panel:#ffffff; --ink:#1a1f2b; --muted:#6b7385; --line:#dfe3ea;
+  --accent:#3b6cf6; --run:#f59e0b; --ok:#16a34a; --err:#dc2626; --crm:#8b5cf6;
+  --c-pricing:#e8590c; --c-legal:#7048e8; --c-technical:#0c8599; --c-competitive:#2f9e44; --c-coordinator:#3b6cf6;
+  --shadow:0 1px 2px rgba(20,30,50,.06),0 4px 16px rgba(20,30,50,.05);
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#0f1218;--panel:#181c25;--ink:#e8ebf2;--muted:#8d96a8;--line:#2a3040;--shadow:0 1px 2px rgba(0,0,0,.4);}
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
+.sp{flex:1}
+button{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 13px;border-radius:8px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:not-allowed}
+input{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);width:230px}
+.pill{padding:3px 10px;border-radius:999px;font-size:12px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.pill.running{color:var(--run);border-color:var(--run)} .pill.done{color:var(--ok);border-color:var(--ok)} .pill.error{color:var(--err);border-color:var(--err)}
+main{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;padding:16px 20px;height:calc(100% - 62px)}
+@media (max-width:980px){main{grid-template-columns:1fr;height:auto}}
+.col{display:flex;flex-direction:column;gap:16px;min-height:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:14px 16px;min-height:0}
+.card h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:0 0 10px;font-weight:600;display:flex;gap:10px;align-items:center}
+.card h2 .sp{flex:1}
+#graphCard{flex:0 0 auto}
+#resultCard{flex:1;overflow:auto}
+#timelineCard{display:flex;flex-direction:column;height:100%}
+@media (max-width:980px){#timelineCard{height:480px}}
+#timeline{overflow:auto;flex:1;margin:0 -6px;padding:0 6px}
+svg{width:100%;height:auto;display:block}
+/* graph */
+.edge{stroke:var(--line);stroke-width:2;fill:none;transition:stroke .3s}
+.edge.on{stroke:var(--accent)}
+.node rect{fill:var(--panel);stroke:var(--line);stroke-width:2;transition:all .3s}
+.node text{fill:var(--ink);font-size:14px;font-weight:600}
+.node .sub{fill:var(--muted);font-size:11.5px;font-weight:400}
+.node .dot{fill:var(--line);transition:fill .3s}
+.node.running rect{stroke:var(--run);animation:pulse 1.2s ease-in-out infinite}
+.node.running .dot{fill:var(--run)}
+.node.done rect{stroke:var(--ok)}
+.node.done .dot{fill:var(--ok)}
+.node .bar{opacity:.9}
+.node.crmflash rect{stroke:var(--crm);stroke-width:3}
+@keyframes pulse{0%,100%{filter:drop-shadow(0 0 0 rgba(245,158,11,0))}50%{filter:drop-shadow(0 0 8px rgba(245,158,11,.65))}}
+.packet{stroke:var(--panel);stroke-width:2}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
+.par{font-size:12px;color:var(--muted);text-transform:none;letter-spacing:0;font-weight:500}
+.par b{color:var(--ink)}
+/* timeline */
+.row{display:grid;grid-template-columns:42px 118px 1fr;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);align-items:start;animation:in .25s ease-out}
+@keyframes in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.row .t{color:var(--muted);font-variant-numeric:tabular-nums;font-size:12px;padding-top:2px}
+.row .who{font-size:12px;font-weight:650;padding:2px 8px;border-radius:6px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;justify-self:start;max-width:118px}
+.row .msg{min-width:0;word-wrap:break-word;white-space:pre-wrap}
+.row .kind{color:var(--muted);font-size:12px;margin-right:6px}
+.row.crm{background:color-mix(in srgb,var(--crm) 8%,transparent);margin:0 -8px;padding:7px 8px;border-radius:8px}
+.row.err .msg{color:var(--err)}
+details summary{cursor:pointer;color:var(--crm);font-weight:600}
+pre{margin:6px 0 0;padding:8px 10px;background:var(--bg);border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:220px;font-size:12px}
+.empty{color:var(--muted);padding:24px 0;text-align:center}
+.banner{background:color-mix(in srgb,var(--run) 14%,transparent);border:1px solid var(--run);border-radius:8px;padding:6px 10px;font-size:12px;margin-bottom:10px;display:none}
+#result{white-space:pre-wrap}
+.files a{display:inline-block;margin:4px 8px 0 0;padding:5px 11px;background:var(--accent);color:#fff;border-radius:8px;text-decoration:none;font-weight:600}
+.note{color:var(--muted);font-size:12px;margin-top:8px}
+label.chk{font-size:12px;color:var(--muted);text-transform:none;letter-spacing:0;font-weight:500;display:flex;gap:5px;align-items:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>Deal Desk Swarm</h1>
+  <span id="status" class="pill">bereit</span>
+  <span id="timer" class="pill">0:00</span>
+  <span class="sp"></span>
+  <button id="btnDemo" title="Gescriptete Beispiel-Ausführung, ohne API">Demo</button>
+  <input id="sid" placeholder="Session-ID für Replay" spellcheck="false">
+  <button id="btnReplay">Replay</button>
+  <button id="btnLive" class="primary">Deal starten</button>
+</header>
+
+<main>
+  <div class="col">
+    <section class="card" id="graphCard">
+      <h2>Schwarm <span class="sp"></span><span class="par">Parallel aktiv: <b id="parNow">0</b> · Max: <b id="parMax">0</b></span></h2>
+      <div class="banner" id="demoBanner">DEMO: gescriptete Beispieldaten, kein echter Lauf. Nur die CRM-Ergebnisse stammen aus den echten Daten.</div>
+      <svg id="graph" viewBox="0 0 880 330" role="img" aria-label="Schwarm-Grafik"></svg>
+      <div class="legend">
+        <span><i style="background:var(--run)"></i>läuft</span>
+        <span><i style="background:var(--ok)"></i>fertig</span>
+        <span><i style="background:var(--crm)"></i>CRM-Abfrage</span>
+        <span><i style="background:var(--accent)"></i>Delegation / Antwort</span>
+      </div>
+    </section>
+    <section class="card" id="resultCard">
+      <h2>Ergebnis des Coordinators</h2>
+      <div id="result" class="empty">Noch nichts. Starte einen Lauf.</div>
+      <div id="files" class="files"></div>
+      <div id="link" class="note"></div>
+    </section>
+  </div>
+
+  <section class="card" id="timelineCard">
+    <h2>Timeline <span class="sp"></span>
+      <label class="chk"><input type="checkbox" id="auto" checked style="width:auto"> mitscrollen</label>
+    </h2>
+    <div id="timeline"><div class="empty">Noch keine Events.</div></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const NODES = {
+  coordinator: {label:"Senior Partner", sub:"Coordinator", x:440, y:62, w:230, color:"--c-coordinator"},
+  pricing:     {label:"Pricing",        sub:"Specialist",  x:110, y:250, w:196, color:"--c-pricing"},
+  legal:       {label:"Legal",          sub:"Reviewer",    x:330, y:250, w:196, color:"--c-legal"},
+  technical:   {label:"Technical Fit",  sub:"Specialist",  x:550, y:250, w:196, color:"--c-technical"},
+  competitive: {label:"Competitive",    sub:"Intel Analyst", x:770, y:250, w:196, color:"--c-competitive"},
+};
+const SVGNS = "http://www.w3.org/2000/svg";
+const H = 64;
+let es = null, t0 = 0, timerId = null, running = new Set(), maxPar = 0, finished = false;
+
+function keyOf(name){
+  const n = (name||"").toLowerCase();
+  if (n.includes("pricing")) return "pricing";
+  if (n.includes("legal")) return "legal";
+  if (n.includes("technical")) return "technical";
+  if (n.includes("competitive")) return "competitive";
+  return "coordinator";
+}
+const colorOf = k => `var(${NODES[k].color})`;
+const el = (tag, attrs={}, parent) => { const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent && parent.appendChild(e); return e; };
+
+/* ---------- graph ---------- */
+const g = $("graph"), nodeEls = {}, edgeEls = {}, subEls = {};
+function buildGraph(){
+  g.innerHTML = "";
+  for (const k of Object.keys(NODES)) if (k !== "coordinator") {
+    const a = NODES.coordinator, b = NODES[k];
+    edgeEls[k] = el("path", {class:"edge", d:`M${a.x},${a.y+H/2} C${a.x},${(a.y+b.y)/2} ${b.x},${(a.y+b.y)/2} ${b.x},${b.y-H/2}`}, g);
+  }
+  for (const [k, n] of Object.entries(NODES)) {
+    const grp = el("g", {class:"node", transform:`translate(${n.x-n.w/2},${n.y-H/2})`}, g);
+    el("rect", {width:n.w, height:H, rx:12}, grp);
+    el("rect", {class:"bar", x:0, y:12, width:5, height:H-24, rx:2.5, fill:colorOf(k)}, grp);
+    el("text", {x:20, y:28}, grp).textContent = n.label;
+    subEls[k] = el("text", {class:"sub", x:20, y:47}, grp);
+    subEls[k].textContent = n.sub;
+    el("circle", {class:"dot", cx:n.w-18, cy:18, r:5}, grp);
+    nodeEls[k] = grp;
+  }
+}
+function setState(k, state){
+  const n = nodeEls[k]; if (!n) return;
+  n.classList.remove("running","done");
+  if (state === "running") { n.classList.add("running"); subEls[k].textContent = "arbeitet …"; }
+  else if (state === "idle" || state === "done") { n.classList.add("done"); subEls[k].textContent = "fertig"; }
+  else if (state === "terminated") { subEls[k].textContent = "beendet"; }
+  if (k !== "coordinator") {
+    state === "running" ? running.add(k) : running.delete(k);
+    maxPar = Math.max(maxPar, running.size);
+    $("parNow").textContent = running.size; $("parMax").textContent = maxPar;
+  }
+}
+function packet(from, to, color){
+  const a = NODES[from], b = NODES[to];
+  const ax = a.x, ay = a.y + (a.y < b.y ? H/2 : -H/2), bx = b.x, by = b.y + (a.y < b.y ? -H/2 : H/2);
+  const c = el("circle", {class:"packet", r:7, fill:color, cx:ax, cy:ay}, g);
+  const dur = 650, s = performance.now();
+  (function step(now){
+    const p = Math.min((now - s) / dur, 1), e = p < .5 ? 2*p*p : 1 - Math.pow(-2*p + 2, 2)/2;
+    c.setAttribute("cx", ax + (bx-ax)*e); c.setAttribute("cy", ay + (by-ay)*e);
+    p < 1 ? requestAnimationFrame(step) : c.remove();
+  })(s);
+}
+function flashEdge(k){ edgeEls[k].classList.add("on"); setTimeout(()=>edgeEls[k].classList.remove("on"), 900); }
+function flashCrm(k){ nodeEls[k].classList.add("crmflash"); setTimeout(()=>nodeEls[k].classList.remove("crmflash"), 1400); }
+
+/* ---------- timeline ---------- */
+const tl = $("timeline");
+const mmss = s => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
+function addRow(agent, kind, content, cls=""){
+  if (tl.querySelector(".empty")) tl.innerHTML = "";
+  const k = keyOf(agent), row = document.createElement("div");
+  row.className = "row " + cls;
+  const t = document.createElement("span"); t.className = "t"; t.textContent = mmss((Date.now()-t0)/1000);
+  const who = document.createElement("span"); who.className = "who"; who.style.background = colorOf(k);
+  who.textContent = NODES[k].label; who.title = agent;
+  const msg = document.createElement("div"); msg.className = "msg";
+  const kd = document.createElement("span"); kd.className = "kind"; kd.textContent = kind;
+  msg.appendChild(kd);
+  if (typeof content === "string") msg.appendChild(document.createTextNode(content));
+  else msg.appendChild(content);
+  row.append(t, who, msg); tl.appendChild(row);
+  if ($("auto").checked) tl.scrollTop = tl.scrollHeight;
+}
+const clip = (s, n=240) => s.length > n ? s.slice(0, n) + " …" : s;
+
+/* ---------- event handling ---------- */
+function handle(e){
+  switch (e.kind){
+    case "session": if (e.id) $("link").textContent = "Session: " + e.id; break;
+    case "thread_created": addRow(e.agent, "Thread gestartet", ""); break;
+    case "thread_status": {
+      const k = keyOf(e.agent); setState(k, e.state);
+      if (e.state === "running") addRow(e.agent, "läuft", "");
+      else if (e.state === "idle") addRow(e.agent, "fertig", "");
+      break;
+    }
+    case "delegate": {
+      const k = keyOf(e.agent);
+      packet("coordinator", k, "var(--accent)"); flashEdge(k);
+      addRow("coordinator", "→ delegiert an " + NODES[k].label, clip(e.text||"")); break;
+    }
+    case "reply": {
+      const k = keyOf(e.agent);
+      packet(k, "coordinator", colorOf(k)); flashEdge(k);
+      addRow(e.agent, "← Antwort", clip(e.text||"", 400)); break;
+    }
+    case "message":
+      if (keyOf(e.agent) === "coordinator") appendResult(e.text);
+      addRow(e.agent, "Nachricht", clip(e.text, 400)); break;
+    case "tool": addRow(e.agent, "Tool", e.name); break;
+    case "crm_call": {
+      const k = keyOf(e.agent); flashCrm(k);
+      const d = document.createElement("details");
+      const s = document.createElement("summary");
+      s.textContent = `CRM · ${e.name}(${Object.entries(e.input||{}).map(([a,b])=>`${a}=${JSON.stringify(b)}`).join(", ")})`;
+      const pre = document.createElement("pre"); pre.textContent = e.result;
+      d.append(s, pre); addRow(e.agent, "", d, "crm"); break;
+    }
+    case "files": showFiles(e.files||[]); break;
+    case "error": addRow("coordinator", "Fehler", e.text, "err"); setStatus("Fehler","error"); stop(true); break;
+    case "done":
+      finished = true; setStatus("fertig","done");
+      setState("coordinator","idle");
+      if (e.link) $("link").innerHTML = `Vollständige Session in der Konsole: <a href="${e.link}" target="_blank" rel="noopener">${e.link}</a>`;
+      stop(true); break;
+  }
+}
+let resultRaw = "";
+function appendResult(t){
+  const r = $("result");
+  resultRaw += (resultRaw ? "\n\n" : "") + t;
+  r.classList.remove("empty"); r.textContent = "";
+  resultRaw.split(/\*\*(.+?)\*\*/s).forEach((part, i) => {   // minimal **bold**, no HTML injection
+    if (i % 2) { const b = document.createElement("strong"); b.textContent = part; r.appendChild(b); }
+    else r.appendChild(document.createTextNode(part));
+  });
+}
+function showFiles(files){
+  const f = $("files"); f.innerHTML = "";
+  files.forEach(n => { const a = document.createElement("a"); a.href = "/files/" + encodeURIComponent(n); a.textContent = "⬇ " + n; f.appendChild(a); });
+  if (!files.length) f.innerHTML = '<div class="note">Keine Dateien vom Lauf erzeugt.</div>';
+}
+
+/* ---------- control ---------- */
+function setStatus(text, cls=""){ const s = $("status"); s.textContent = text; s.className = "pill " + cls; }
+function lock(b){ ["btnDemo","btnReplay","btnLive"].forEach(id => $(id).disabled = b || (id==="btnLive" && !liveOk)); }
+function stop(ended){
+  if (es) { es.close(); es = null; }
+  clearInterval(timerId); lock(false);
+  if (!ended) setStatus("abgebrochen");
+}
+function start(url, label, demo){
+  if (es) es.close();
+  buildGraph(); running.clear(); maxPar = 0; finished = false;
+  $("parNow").textContent = 0; $("parMax").textContent = 0;
+  tl.innerHTML = '<div class="empty">Warte auf Events …</div>';
+  resultRaw = ""; $("result").className = "empty"; $("result").textContent = "Noch nichts."; $("files").innerHTML = ""; $("link").textContent = "";
+  $("demoBanner").style.display = demo ? "block" : "none";
+  t0 = Date.now(); clearInterval(timerId);
+  timerId = setInterval(() => $("timer").textContent = mmss((Date.now()-t0)/1000), 500);
+  $("timer").textContent = "0:00"; setStatus(label, "running"); lock(true);
+  es = new EventSource(url);
+  es.onmessage = m => handle(JSON.parse(m.data));
+  es.onerror = () => { if (!finished) { setStatus("Verbindung beendet","error"); } stop(true); };
+}
+let liveOk = false;
+$("btnDemo").onclick = () => start("/api/run?mode=demo", "Demo läuft", true);
+$("btnLive").onclick = () => start("/api/run?mode=live", "Lauf aktiv", false);
+$("btnReplay").onclick = () => {
+  const id = $("sid").value.trim();
+  if (!id) { $("sid").focus(); return; }
+  start("/api/run?mode=replay&session_id=" + encodeURIComponent(id), "Replay läuft", false);
+};
+fetch("/api/status").then(r => r.json()).then(s => {
+  liveOk = s.live.ready;
+  $("btnLive").disabled = !liveOk;
+  $("btnLive").title = liveOk ? "" : "Nicht bereit: " + s.live.missing.join("; ");
+  if (s.last_session_id) $("sid").value = s.last_session_id;
+});
+buildGraph();
+</script>
+</body>
+</html>
