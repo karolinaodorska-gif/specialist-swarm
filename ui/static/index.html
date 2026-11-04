@@ -321,6 +321,7 @@ function stop(ended){
 function start(url, label, demo){
   if (es) es.close();
   buildGraph(); running.clear(); maxPar = 0; finished = false;
+  if (hasCritic) reveal("critic");
   $("parNow").textContent = 0; $("parMax").textContent = 0;
   $("tokens").textContent = "Tokens: –"; $("tokens").title = "Noch keine Token-Daten";
   tl.innerHTML = '<div class="empty">Warte auf Events …</div>';
@@ -346,7 +347,10 @@ fetch("/api/status").then(r => r.json()).then(s => {
   $("btnLive").disabled = !liveOk;
   $("btnLive").title = liveOk ? "" : "Nicht bereit: " + s.live.missing.join("; ");
   if (s.last_session_id) $("sid").value = s.last_session_id;
+  hasCritic = !!s.has_critic;
+  if (hasCritic) reveal("critic");   // critic exists in the roster: show it from the start
 });
+let hasCritic = false;
 buildGraph();
 </script>
 </body>
