@@ -8,7 +8,8 @@ Three modes (all stream normalized events to the browser via SSE):
   replay  replay an earlier session by ID (reads events, no new run, no cost)
   demo    scripted sample run, no API needed (for building / showing the UI)
 
-Does not touch run_deal_desk.py; it reuses its constants and the CRM handler.
+Live runs use run_deal_desk.create_session / build_user_message (same prompt and file
+mounts as the CLI) and the CRM handler from crm-mcp/.
 Run from anywhere: the app switches to the repo root (scripts use relative paths).
 """
 
@@ -159,7 +160,7 @@ def crm_event(event, agent: str, result: str) -> dict:
 # ------------------------------------------------------------------ modes --
 
 def run_live():
-    from run_deal_desk import RFP_PATH, SUPPORTING_FILES, load_inputs_as_context  # noqa: F401
+    from run_deal_desk import build_user_message, create_session  # same prompt + file setup as the CLI
 
     ready = live_readiness()
     if not ready["ready"]:
@@ -171,27 +172,12 @@ def run_live():
     try:
         client = _client()
         norm = Normalizer()
-        session = client.beta.sessions.create(
-            agent=(ROOT / ".coordinator_id").read_text().strip(),
-            environment_id=(ROOT / ".environment_id").read_text().strip(),
-            title="Deal Desk — Acme Corp RFP (UI)",
-        )
+        session = create_session(client, "Deal Desk — Acme Corp RFP (UI)")
         (ROOT / ".last_session_id").write_text(session.id)
         yield {"kind": "session", "id": session.id}
         poller = UsagePoller(client, session.id)
 
-        message = (
-            "An RFP has just landed. Please run the standard Deal Desk process:\n"
-            "1. Read the RFP yourself.\n"
-            "2. Delegate to all four specialists in parallel.\n"
-            "3. Synthesise their replies.\n"
-            "4. Produce the final proposal response as a branded Word document "
-            "if you have access to a docx skill; otherwise output the response "
-            "as a structured markdown document.\n\n"
-            "Specialists have their own skills attached for their respective "
-            "domains. Move fast — the RFP deadline is real.\n\n"
-            f"{load_inputs_as_context()}"
-        )
+        message = build_user_message()
         with client.beta.sessions.events.stream(session.id) as stream:
             client.beta.sessions.events.send(
                 session.id,
@@ -232,7 +218,7 @@ def run_live():
         yield {"kind": "files", "files": names}
         yield {"kind": "done", "session": session.id,
                "link": f"https://platform.claude.com/sessions/{session.id}"}
-    except Exception as exc:  # surface everything in the UI instead of a dead stream
+    except (Exception, SystemExit) as exc:  # surface everything in the UI (create_session may SystemExit)
         yield {"kind": "error", "text": f"{type(exc).__name__}: {exc}"}
     finally:
         if _live_lock.locked():
@@ -304,7 +290,13 @@ def index(request):
 
 def status(request):
     last = (ROOT / ".last_session_id")
+    ids_file = ROOT / ".specialist_ids.json"
+    try:
+        has_critic = "critic" in json.loads(ids_file.read_text()) if ids_file.exists() else False
+    except ValueError:
+        has_critic = False
     return JSONResponse({
+        "has_critic": has_critic,
         "live": live_readiness(),
         "last_session_id": last.read_text().strip() if last.exists() else "",
     })

@@ -110,6 +110,9 @@ and **Demo** (scripted sample run, no API needed). Generated files land in `outp
 │   ├── custom_tool.py             (custom tool definitions + handler, used by default)
 │   ├── server.py                  (same CRM as remote MCP server, optional)
 │   └── php-draft/                 (untested PHP port, reference)
+├── tools/
+│   └── build_docx.py              (Markdown -> branded .docx; mounted into the session, replaces
+│                                   the ~30k characters of python-docx code the coordinator wrote)
 ├── ui/                            (local dashboard)
 │   ├── app.py
 │   ├── demo.py

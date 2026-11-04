@@ -1,9 +1,13 @@
 """
 Run the Deal Desk swarm against the synthetic RFP.
 
-Inlines the RFP + past-wins + product-overview into the user message (simpler
-than Files API for hackathon-scale content). Streams events as they come in so
-you can watch the parallel thread fan-out — this is the demo, narrate it live.
+The RFP, product overview and the docx builder (tools/build_docx.py) are uploaded
+via the Files API and mounted into the session's shared workspace
+(/mnt/session/uploads/deal/), so the coordinator doesn't have to re-type them into files and
+briefs (that cost ~90 s per run). Streams events as they come in so you can watch
+the parallel thread fan-out — this is the demo, narrate it live.
+
+The session setup (create_session, build_user_message) is shared with ui/app.py.
 
 Saves the final transcript to outputs/.
 
@@ -21,10 +25,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "crm-mcp"))
 from custom_tool import is_crm_tool, run_crm_tool  # noqa: E402  (synthetic CRM)
 
 
-RFP_PATH = Path("synthetic-data/rfp-acme-corp.md")
-SUPPORTING_FILES = [
-    # past-wins.json is no longer inlined: the Pricing Specialist queries it via the CRM tools
-    Path("synthetic-data/product-overview.md"),
+ROOT = Path(__file__).resolve().parent
+# The API mounts resources UNDER /mnt/session/uploads (mount_path "/deal/x" -> /mnt/session/uploads/deal/x).
+# The workspace is shared: coordinator and specialists read the same paths.
+FILES_DIR = "/mnt/session/uploads/deal"
+WORK_DIR = "/workspace/deal/final"  # coordinator's scratch space for the proposal Markdown
+SESSION_FILES = [
+    # (local file, name inside FILES_DIR). past-wins.json is NOT here: the Pricing
+    # Specialist queries it through the CRM tools.
+    (ROOT / "synthetic-data" / "rfp-acme-corp.md", "rfp-acme-corp.md"),
+    (ROOT / "synthetic-data" / "product-overview.md", "product-overview.md"),
+    (ROOT / "tools" / "build_docx.py", "build_docx.py"),
 ]
 OUTPUT_DIR = Path("outputs")
 
@@ -39,69 +50,98 @@ def load_firm_voice() -> str:
     print(f"  including firm voice: {FIRM_VOICE_PATH}")
     return (
         "\n\n=====  MANDATORY HOUSE STYLE (firm-voice)  =====\n"
-        "This overrides any default branding. The final docx MUST use the "
-        "company name, section headings, tone, humour, colours (exact hex "
-        "values), cover page and footer defined below. A proposal that says "
-        "'BTS-Synthetic' on the cover or uses non-swamp colours is a FAILED "
-        "deliverable.\n\n"
+        "This overrides any default branding. The proposal TEXT MUST use the "
+        "company name, section headings, tone, humour, cover letter and sign-off "
+        "defined below. build_docx.py applies the visual brand (colours, cover "
+        "page, tables, callout boxes, footer) automatically, so ignore the hex "
+        "values and never write python-docx code yourself. A proposal that says "
+        "'BTS-Synthetic' as the company name is a FAILED deliverable.\n\n"
         + FIRM_VOICE_PATH.read_text(encoding="utf-8")
     )
 
 
-def load_inputs_as_context() -> str:
-    blocks = []
-    for path in [RFP_PATH, *SUPPORTING_FILES]:
+def upload_session_files(client: Anthropic) -> list[dict]:
+    """Upload the input files and return them as session `resources` (mounted under FILES_DIR)."""
+    resources = []
+    for path, name in SESSION_FILES:
         if not path.exists():
-            print(f"  WARNING: {path} missing — skipping")
-            continue
-        print(f"  including {path.name}")
-        blocks.append(f"=====  DOCUMENT: {path.name}  =====\n{path.read_text(encoding='utf-8')}")
-    return "\n\n".join(blocks)
+            raise SystemExit(f"Missing input file: {path}")
+        # Originals expire after 24 h so repeated runs don't pile up files in the workspace.
+        uploaded = client.beta.files.upload(
+            file=(name, path.read_bytes(), "text/plain"), expires_in_seconds=86400
+        )
+        print(f"  uploaded {name} -> {FILES_DIR}/{name}")
+        resources.append(
+            {"type": "file", "file_id": uploaded.id, "mount_path": f"/deal/{name}"}
+        )
+    return resources
+
+
+def create_session(client: Anthropic, title: str):
+    """Create a session on the coordinator with the input files mounted. Shared with ui/app.py."""
+    for needed in (".coordinator_id", ".environment_id"):
+        if not (ROOT / needed).exists():
+            raise SystemExit(
+                f"Missing {needed}. Run setup_environment.py, create_specialists.py, "
+                "upload_skills.py and create_coordinator.py first (or start.ps1)."
+            )
+    print("Uploading session files...")
+    return client.beta.sessions.create(
+        agent=(ROOT / ".coordinator_id").read_text().strip(),
+        environment_id=(ROOT / ".environment_id").read_text().strip(),
+        resources=upload_session_files(client),
+        title=title,
+    )
+
+
+def build_user_message() -> str:
+    """The kick-off message. Shared with ui/app.py so UI and CLI runs behave identically."""
+    return (
+        "An RFP has just landed. Run the standard Deal Desk process.\n\n"
+        "FILES (already mounted in the shared workspace, NOT pasted here):\n"
+        f"- {FILES_DIR}/rfp-acme-corp.md: the RFP\n"
+        f"- {FILES_DIR}/product-overview.md: capability map (for Technical Fit)\n"
+        f"- {FILES_DIR}/build_docx.py: Word builder (step 4)\n"
+        "Never copy the content of these files into briefs, messages or other "
+        "files: every specialist can read the same paths itself. Past-deal data "
+        "is in the CRM tools (Pricing Specialist only).\n\n"
+        "Process:\n"
+        "1. Read the RFP file yourself. Don't explore the file system, "
+        "everything you need is listed above.\n"
+        "2. Delegate to all four specialists in ONE turn. Each brief: max 80 "
+        "words, only the file path(s) to read and the one question to answer.\n"
+        "3. Synthesise their replies.\n"
+        "4. Write the proposal TEXT in the house style below as Markdown to "
+        f"{WORK_DIR}/proposal.md (mkdir -p first), then build the Word "
+        f"file: python3 {FILES_DIR}/build_docx.py {WORK_DIR}/proposal.md "
+        "/mnt/session/outputs/Bogwater-Burr_Proposal_<Customer>.docx . "
+        "Do NOT write your own python-docx code; the builder applies colours, "
+        "cover page, tables, Swamp Wisdom boxes and footer. Markdown format: "
+        "front matter between '---' lines (customer:, title:, date:), one "
+        "'## Swamp Heading — Plain subtitle' per section, '> Swamp Wisdom: ...' "
+        "callouts, '|' pipe tables, '- ' bullets, '1. ' numbered items. A blank "
+        "line starts a new paragraph (consecutive lines are joined). If the "
+        "builder reports an error, fix the Markdown and run it again.\n"
+        "5. Before finishing, run the house-style self-check from the style "
+        "guide and fix anything that fails. If a Critic is in your roster, ask "
+        "it to check the voice, not just the substance.\n\n"
+        "Specialists have their own skills attached for their respective "
+        "domains. Move fast — the RFP deadline is real."
+        f"{load_firm_voice()}"
+    )
 
 
 def main() -> None:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise SystemExit("Set ANTHROPIC_API_KEY before running.")
 
-    if not Path(".coordinator_id").exists() or not Path(".environment_id").exists():
-        raise SystemExit(
-            "Missing .coordinator_id or .environment_id. Run "
-            "create_specialists.py, upload_skills.py, then create_coordinator.py first."
-        )
-
-    coordinator_id = Path(".coordinator_id").read_text().strip()
-    environment_id = Path(".environment_id").read_text().strip()
-
     client = Anthropic()
 
-    print("Loading RFP + supporting docs...")
-    context = load_inputs_as_context()
-
-    print(f"\nStarting session against coordinator {coordinator_id}...")
-    session = client.beta.sessions.create(
-        agent=coordinator_id,
-        environment_id=environment_id,
-        title="Deal Desk — Acme Corp RFP",
-    )
+    print("Starting session against the coordinator...")
+    session = create_session(client, "Deal Desk — Acme Corp RFP")
     Path(".last_session_id").write_text(session.id)
 
-    user_message = (
-        "An RFP has just landed. Please run the standard Deal Desk process:\n"
-        "1. Read the RFP yourself.\n"
-        "2. Delegate to all four specialists in parallel.\n"
-        "3. Synthesise their replies.\n"
-        "4. Produce the final proposal response as a branded Word document "
-        "(python-docx) in the Bogwater & Burr house style below: name, "
-        "headings, humour, colours, cover and footer exactly as specified. "
-        "Name the file Bogwater-Burr_Proposal_<Customer>.docx.\n"
-        "5. Before finishing, run the house-style self-check from the style "
-        "guide and fix anything that fails. Also ask the Critic to check the "
-        "voice, not just the substance.\n\n"
-        "Specialists have their own skills attached for their respective "
-        "domains. Move fast — the RFP deadline is real.\n\n"
-        f"{context}"
-        f"{load_firm_voice()}"
-    )
+    user_message = build_user_message()
 
     # Stream the events — this is the demo. Watch for parallel thread spawns.
     print("\n=== EVENT STREAM (this is the demo) ===\n")
