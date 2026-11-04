@@ -59,6 +59,32 @@ Two-monitor setup:
 
 Narrate the events stream while it runs. The room will get it.
 
+## Synthetic CRM (stretch S5)
+
+The Pricing Specialist no longer gets `past-wins.json` pasted into the prompt. It queries a
+synthetic CRM through two tools, `search_past_deals` and `get_deal` (see `crm-mcp/`):
+
+- **Custom tool (default):** the tool definitions live in the agent, and `run_deal_desk.py` / the UI
+  answer the `agent.custom_tool_use` events from `crm-mcp/crm_core.py`. No hosting needed.
+- **Remote MCP server (optional):** `crm-mcp/server.py` exposes the same CRM over streamable HTTP
+  with bearer auth. Managed Agents only reach public HTTPS URLs, so this needs hosting or a tunnel
+  (`crm-mcp/php-draft/` is an untested PHP port for shared hosting).
+
+After changing the specialists, re-run `create_specialists.py` **and** `create_coordinator.py`
+(the coordinator references the specialist IDs).
+
+## Live dashboard
+
+```bash
+python ui/app.py          # http://127.0.0.1:8000
+```
+
+Swarm graph (live status per agent, delegation/reply animation, parallelism counter), event
+timeline with CRM calls, token usage in the header (input/output, list price, per-agent split),
+result and file downloads. Modes: **Deal starten** (live run, needs `ANTHROPIC_API_KEY` and the
+`.coordinator_id` / `.environment_id` files), **Replay** (re-play a past session by ID, no new run)
+and **Demo** (scripted sample run, no API needed). Generated files land in `outputs/`.
+
 ## What's in this folder
 
 ```
@@ -67,17 +93,29 @@ Narrate the events stream while it runs. The room will get it.
 ├── scenario-cards.md
 ├── stretch-goals.md
 ├── requirements.txt
+├── setup_environment.py           (creates the cloud environment)
 ├── create_specialists.py          (creates the sub-agents)
 ├── create_coordinator.py          (creates the coordinator)
 ├── upload_skills.py               (uploads custom skills via Skills API)
 ├── run_deal_desk.py               (runs the full swarm against an RFP)
+├── download_deliverable.py        (downloads the generated files of a session)
 ├── stretch_critic_subagent.py     (stretch: critic agent)
-├── skills/                        (custom skills, one per specialist)
+├── skills/                        (custom skills)
 │   ├── pricing-playbook/SKILL.md
 │   ├── legal-checklist/SKILL.md
-│   └── competitive-intel/SKILL.md
+│   ├── competitive-intel/SKILL.md
+│   └── firm-voice/SKILL.md        (stretch S1: coordinator's firm voice)
+├── crm-mcp/                       (stretch S5: synthetic CRM)
+│   ├── crm_core.py                (queries over past-wins.json)
+│   ├── custom_tool.py             (custom tool definitions + handler, used by default)
+│   ├── server.py                  (same CRM as remote MCP server, optional)
+│   └── php-draft/                 (untested PHP port, reference)
+├── ui/                            (local dashboard)
+│   ├── app.py
+│   ├── demo.py
+│   └── static/index.html
 └── synthetic-data/
     ├── rfp-acme-corp.md           (the RFP that triggers the swarm)
-    ├── past-wins.json             (used by pricing specialist)
+    ├── past-wins.json             (queried by the pricing specialist via the CRM tools)
     └── product-overview.md        (used by technical specialist)
 ```
