@@ -42,7 +42,7 @@ def main() -> None:
     client = Anthropic()
 
     # List existing custom skills so we can detect and reuse any prior uploads.
-    # Skills API enforces unique display_title, so retrying with the same title
+    # Skills API enforces unique display_name, so retrying with the same name
     # would otherwise fail. Idempotent retry is essential for hackathon dev loops.
     print("Checking for existing skills...")
     existing_by_title: dict[str, str] = {}
